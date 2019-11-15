@@ -23,7 +23,7 @@ import {GridCellLayer} from '@deck.gl/layers';
 
 import {defaultColorRange} from '../utils/color-utils';
 import {pointToDensityGridDataCPU} from './grid-aggregator';
-import CPUAggregator from '../utils/grid-hex-cpu-aggregator';
+import CPUAggregator from '../utils/cpu-aggregator';
 import AggregationLayer from '../aggregation-layer';
 
 function nop() {}

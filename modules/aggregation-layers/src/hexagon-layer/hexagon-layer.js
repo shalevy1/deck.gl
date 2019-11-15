@@ -25,7 +25,7 @@ import {ColumnLayer} from '@deck.gl/layers';
 import {defaultColorRange} from '../utils/color-utils';
 
 import {pointToHexbin} from './hexagon-aggregator';
-import CPUAggregator from '../utils/grid-hex-cpu-aggregator';
+import CPUAggregator from '../utils/cpu-aggregator';
 import AggregationLayer from '../aggregation-layer';
 
 function nop() {}
