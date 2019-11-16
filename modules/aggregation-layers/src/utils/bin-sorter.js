@@ -27,7 +27,7 @@ const defaultGetValue = points => points.length;
 export default class BinSorter {
   constructor(bins = [], getValue = defaultGetValue) {
     this.sortedBins = this.getSortedBins(bins, getValue);
-    this.maxCount = this.getMaxCount();
+    this.updateMinMaxValues();
     this.binMap = this.getBinMap();
   }
 
@@ -52,8 +52,9 @@ export default class BinSorter {
         }
 
         return accu;
-      }, [])
-      .sort((a, b) => a.value - b.value);
+      }, []);
+      // TODO optionally enable sorting
+      // .sort((a, b) => a.value - b.value);
   }
 
   /**
@@ -78,10 +79,17 @@ export default class BinSorter {
    * Get ths max count of all bins
    * @return {Number | Boolean} max count
    */
-  getMaxCount() {
-    let maxCount = 0;
-    this.sortedBins.forEach(x => (maxCount = maxCount > x.counts ? maxCount : x.counts));
-    return maxCount;
+  updateMinMaxValues() {
+    this.maxCount = 0;
+    this.maxValue = 0;
+    this.minValue = -1;
+    this.totalCount = 0;
+    this.sortedBins.forEach(x => {
+      this.maxCount = this.maxCount > x.counts ? this.maxCount : x.counts
+      this.maxValue = this.maxValue > x.value ? this.maxValue: x.value;
+      this.minValue = this.minValue < x.value ? this.minValue : x.value;
+      this.totalCount += x.counts;
+    });
   }
 
   /**

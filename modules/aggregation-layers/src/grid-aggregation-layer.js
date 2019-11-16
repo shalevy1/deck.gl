@@ -20,15 +20,28 @@
 
 import AggregationLayer from './aggregation-layer';
 import GPUGridAggregator from './utils/gpu-grid-aggregation/gpu-grid-aggregator';
+import CPUGridAggregator from './utils/cpu-grid-aggregator';
 
 export default class GridAggregationLayer extends AggregationLayer {
-  initializeState(aggregationProps) {
+  // TODO: need to fix all callers of this method
+  initializeState({aggregationProps, getCellSize, projectPoints}) {
     const {gl} = this.context;
     super.initializeState(aggregationProps);
     this.setState({
-      gpuGridAggregator: new GPUGridAggregator(gl, {id: `${this.id}-gpu-aggregator`})
+      gpuGridAggregator: new GPUGridAggregator(gl, {id: `${this.id}-gpu-aggregator`}),
+      cpuGridAggregator: new CPUGridAggregator({getCellSize})
     });
   }
+
+  updateState(opts) {
+    super.updateState(opts);
+    this.state.cpuGridAggregator.updateState(Object.assign({},opts, {
+      viewport: this.context.viewport,
+      attributes: this.getAttributes(),
+      projectPoints: this.state.projectPoints
+    }));
+  }
+
 
   finalizeState() {
     super.finalizeState();

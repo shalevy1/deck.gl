@@ -109,6 +109,7 @@ const defaultDimensions = [
   }
 ];
 const defaultGetCellSize = props => props.cellSize;
+const defaultAggregator = props => null;
 export default class CPUAggregator {
   constructor(opts) {
     this.state = {
@@ -132,7 +133,7 @@ export default class CPUAggregator {
     this.dimensionUpdaters = {};
 
     this._getCellSize = opts.getCellSize || defaultGetCellSize;
-    this._getAggregator = opts.getAggregator;
+    this._getAggregator = opts.getAggregator || defaultAggregator;
     this._addDimension(opts.dimensions || defaultDimensions);
   }
 
@@ -141,18 +142,21 @@ export default class CPUAggregator {
   }
 
   updateState(opts) {
-    const {oldProps, props, changeFlags, viewport, attributes} = opts;
+    const {oldProps, props, changeFlags, viewport, attributes, projectPoints} = opts;
     this.updateGetValueFuncs(oldProps, props, changeFlags);
     const reprojectNeeded = this.needsReProjectPoints(oldProps, props, changeFlags);
-
+    let aggregationDirty = false;
     if (changeFlags.dataChanged || reprojectNeeded) {
       // project data into hexagons, and get sortedColorBins
-      this.getAggregatedData(props, viewport, attributes);
+      this.getAggregatedData(props, viewport, attributes, projectPoints);
+      aggregationDirty = true;
     } else {
       const dimensionChanges = this.getDimensionChanges(oldProps, props, changeFlags) || [];
       // this here is layer
       dimensionChanges.forEach(f => typeof f === 'function' && f());
+      aggregationDirty = true;
     }
+    this.setState({aggregationDirty});
 
     return this.state;
   }
@@ -182,7 +186,7 @@ export default class CPUAggregator {
     return result;
   }
 
-  getAggregatedData(props, viewport, attributes) {
+  getAggregatedData(props, viewport, attributes, projectPoints) {
     const aggregator = this._getAggregator(props);
 
     // result should contain a data array and other props
@@ -193,7 +197,8 @@ export default class CPUAggregator {
       cellSize: this._getCellSize(props),
       data: props.data,
       viewport,
-      attributes
+      attributes,
+      projectPoints
       // getPosition: props.getPosition
     });
     this.setState({
@@ -208,7 +213,7 @@ export default class CPUAggregator {
   updateGetValueFuncs(oldProps, props, changeFlags) {
     for (const key in this.dimensionUpdaters) {
       const {value, weight, aggregation} = this.dimensionUpdaters[key].getBins.triggers;
-      let getValue = props[value.prop];
+      let getValue = value && props[value.prop];
       const getValueChanged = this.needUpdateDimensionStep(
         this.dimensionUpdaters[key].getBins,
         oldProps,
@@ -216,7 +221,8 @@ export default class CPUAggregator {
         changeFlags
       );
 
-      if (getValueChanged && getValue === null) {
+      if (getValueChanged && !getValue) {
+        // TODO: save getValue to getBins.triggers to avoid recomputing
         // If `getValue` is not provided from props, build it with aggregation and weight.
         getValue = getValueFunc(props[aggregation.prop], props[weight.prop]);
       }
@@ -260,8 +266,8 @@ export default class CPUAggregator {
       accessor,
       pickingInfo,
       getBins: Object.assign({updater: this.getDimensionSortedBins}, getBins),
-      getDomain: Object.assign({updater: this.getDimensionValueDomain}, getDomain),
-      getScaleFunc: Object.assign({updater: this.getDimensionScale}, getScaleFunc),
+      getDomain: getDomain && Object.assign({updater: this.getDimensionValueDomain}, getDomain),
+      getScaleFunc: getScaleFunc && Object.assign({updater: this.getDimensionScale}, getScaleFunc),
       attributeAccessor: this.getSubLayerDimensionAttribute(key, nullValue)
     };
   }
@@ -397,6 +403,7 @@ export default class CPUAggregator {
 
   getDimensionValueDomain(props, dimensionUpdater) {
     const {getDomain, key} = dimensionUpdater;
+    if (!getDomain) { return; }
     const {
       triggers: {lowerPercentile, upperPercentile},
       onSet
@@ -416,6 +423,7 @@ export default class CPUAggregator {
 
   getDimensionScale(props, dimensionUpdater) {
     const {key, getScaleFunc} = dimensionUpdater;
+    if (!getScaleFunc) { return; }
     const {domain, range, scaleType} = getScaleFunc.triggers;
     // const {colorRange} = key;
     const dimensionRange = props[range.prop];

@@ -23,13 +23,14 @@ import GPUGridAggregator from '../utils/gpu-grid-aggregation/gpu-grid-aggregator
 import {AGGREGATION_OPERATION} from '../utils/aggregation-operation-utils';
 import ScreenGridCellLayer from './screen-grid-cell-layer';
 import GridAggregationLayer from '../grid-aggregation-layer';
+import {getFloatTexture} from '../utils/resource-utils.js';
 
 import GL from '@luma.gl/constants';
 import {Buffer} from '@luma.gl/core';
 
 const defaultProps = Object.assign({}, ScreenGridCellLayer.defaultProps, {
   getPosition: {type: 'accessor', value: d => d.position},
-  getWeight: {type: 'accessor', value: d => [1, 0, 0]},
+  getWeight: {type: 'accessor', value: d => 1}, // [1, 0, 0]},
 
   gpuAggregation: true,
   aggregation: 'SUM'
@@ -47,18 +48,25 @@ export default class ScreenGridLayer extends GridAggregationLayer {
       log.error(`ScreenGridLayer: ${this.id} is not supported on this browser`)();
       return;
     }
-    super.initializeState(AGGREGATION_PROPS);
+    super.initializeState({
+      aggregationProps: AGGREGATION_PROPS,
+      getCellSize: props => props.cellSizePixels,
+      projectPoints: true
+    });
     const weights = {
       color: {
         size: 1,
         operation: AGGREGATION_OPERATION.SUM,
-        needMax: true
+        needMax: true,
+        maxTexture: getFloatTexture(gl, {id: `${this.id}-max-texture`})
       }
     };
     this.setState({
       supported: true,
       weights,
-      subLayerData: {attributes: {}}
+      subLayerData: {attributes: {}},
+      projectPoints: true,
+      maxTexture: weights.color.maxTexture
     });
     const attributeManager = this.getAttributeManager();
     attributeManager.add({
@@ -185,7 +193,8 @@ export default class ScreenGridLayer extends GridAggregationLayer {
       // Use pixelProjectionMatrix to transform points to viewport (screen) space.
       gridTransformMatrix = viewport.pixelProjectionMatrix;
     }
-    const results = this.state.gpuGridAggregator.run({
+    const aggregator = this.state.cpuGridAggregator;
+    const results = aggregator.run({
       weights,
       cellSize: [cellSizePixels, cellSizePixels],
       viewport,
@@ -197,8 +206,6 @@ export default class ScreenGridLayer extends GridAggregationLayer {
       attributes: this.getAttributes(),
       moduleSettings: this.getModuleSettings()
     });
-
-    this.setState({maxTexture: results.color.maxTexture});
   }
 
   _updateGridParams() {

@@ -30,13 +30,13 @@ const R_EARTH = 6378000;
  * @returns {object} - grid data, cell dimension
  */
 export function pointToDensityGridDataCPU(opts) {
-  const {data, cellSize, attributes} = opts;
-  const {gridHash, gridOffset} = _pointsToGridHashing(data, cellSize, attributes);
-  const result = _getGridLayerDataFromGridHash(gridHash, gridOffset);
+  // const {data, cellSize, attributes, viewport, projectPoints} = opts;
+  const hashInfo = _pointsToGridHashing(opts);
+  const result = _getGridLayerDataFromGridHash(hashInfo);
 
   return {
-    gridHash,
-    gridOffset,
+    gridHash: hashInfo.gridHash,
+    gridOffset: hashInfo.gridOffset,
     data: result
   };
 }
@@ -48,34 +48,44 @@ export function pointToDensityGridDataCPU(opts) {
  * @param {function} getPosition - position accessor
  * @returns {object} - grid hash and cell dimension
  */
-/* eslint-disable max-statements */
-function _pointsToGridHashing(points = [], cellSize, attributes) {
+/* eslint-disable max-statements, complexity */
+function _pointsToGridHashing({data = [], cellSize, attributes, viewport, projectPoints}) {
   // find the geometric center of sample points
   let latMin = Infinity;
   let latMax = -Infinity;
   let pLat;
 
-  const {iterable, objectInfo} = createIterable(points);
+  const {iterable, objectInfo} = createIterable(data);
   const posSize = 3;
   const positions = attributes.positions.value;
-  /* eslint-disable-next-line no-unused-vars */
-  for (const pt of iterable) {
-    objectInfo.index++;
-    // TODO: this logic should go into Attribute class
-    pLat = positions[objectInfo.index * posSize + 1];
-    if (Number.isFinite(pLat)) {
-      latMin = pLat < latMin ? pLat : latMin;
-      latMax = pLat > latMax ? pLat : latMax;
+
+  let gridOffset;
+  let offsets;
+  if (projectPoints) {
+    offsets = [0, 0]
+    gridOffset = {xOffset: cellSize, yOffset: cellSize};
+  } else {
+    offsets = [180, 90];
+    /* eslint-disable-next-line no-unused-vars */
+    for (const pt of iterable) {
+      objectInfo.index++;
+      // TODO: this logic should go into Attribute class
+      pLat = positions[objectInfo.index * posSize + 1];
+      if (Number.isFinite(pLat)) {
+        latMin = pLat < latMin ? pLat : latMin;
+        latMax = pLat > latMax ? pLat : latMax;
+      }
+    }
+
+    const centerLat = (latMin + latMax) / 2;
+
+    gridOffset = _calculateGridLatLonOffset(cellSize, centerLat);
+
+    if (gridOffset.xOffset <= 0 || gridOffset.yOffset <= 0) {
+      return {gridHash: {}, gridOffset};
     }
   }
 
-  const centerLat = (latMin + latMax) / 2;
-
-  const gridOffset = _calculateGridLatLonOffset(cellSize, centerLat);
-
-  if (gridOffset.xOffset <= 0 || gridOffset.yOffset <= 0) {
-    return {gridHash: {}, gridOffset};
-  }
 
   // calculate count per cell
   const gridHash = {};
@@ -85,25 +95,29 @@ function _pointsToGridHashing(points = [], cellSize, attributes) {
   for (const pt of iterable) {
     objectInfo.index++;
     // const [lng, lat] = getPosition(pt, objectInfo);
-    const lng = positions[objectInfo.index * posSize];
-    const lat = positions[objectInfo.index * posSize + 1];
+    let lng = positions[objectInfo.index * posSize];
+    let lat = positions[objectInfo.index * posSize + 1];
+
+    if (projectPoints) {
+      [lng, lat]= viewport.project([lng, lat]);
+    }
 
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      const latIdx = Math.floor((lat + 90) / gridOffset.yOffset);
-      const lonIdx = Math.floor((lng + 180) / gridOffset.xOffset);
+      const latIdx = Math.floor((lat + offsets[1]) / gridOffset.yOffset);
+      const lonIdx = Math.floor((lng + offsets[0]) / gridOffset.xOffset);
       const key = `${latIdx}-${lonIdx}`;
 
-      gridHash[key] = gridHash[key] || {count: 0, points: []};
+      gridHash[key] = gridHash[key] || {count: 0, points: [], lonIdx, latIdx};
       gridHash[key].count += 1;
       gridHash[key].points.push(pt);
     }
   }
 
-  return {gridHash, gridOffset};
+  return {gridHash, gridOffset, offsets: [offsets[0] * -1, offsets[0] * -1]};
 }
-/* eslint-enable max-statements */
+/* eslint-enable max-statements, complexity */
 
-function _getGridLayerDataFromGridHash(gridHash, gridOffset) {
+function _getGridLayerDataFromGridHash({gridHash, gridOffset, offsets}) {
   return Object.keys(gridHash).reduce((accu, key, i) => {
     const idxs = key.split('-');
     const latIdx = parseInt(idxs[0], 10);
@@ -113,7 +127,7 @@ function _getGridLayerDataFromGridHash(gridHash, gridOffset) {
       Object.assign(
         {
           index: i,
-          position: [-180 + gridOffset.xOffset * lonIdx, -90 + gridOffset.yOffset * latIdx]
+          position: [offsets[0] + gridOffset.xOffset * lonIdx, offsets[1] + gridOffset.yOffset * latIdx]
         },
         gridHash[key]
       )
