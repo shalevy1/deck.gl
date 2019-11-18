@@ -21,6 +21,10 @@
 import AggregationLayer from './aggregation-layer';
 import GPUGridAggregator from './utils/gpu-grid-aggregation/gpu-grid-aggregator';
 import CPUGridAggregator from './utils/cpu-grid-aggregator';
+import {Buffer} from '@luma.gl/core';
+import GL from '@luma.gl/constants';
+import {Matrix4} from 'math.gl';
+import {getBoundingBox, getGridOffset, alignToCell} from './utils/gpu-grid-aggregation/grid-aggregation-utils';
 
 export default class GridAggregationLayer extends AggregationLayer {
   // TODO: need to fix all callers of this method
@@ -35,10 +39,56 @@ export default class GridAggregationLayer extends AggregationLayer {
 
   updateState(opts) {
     super.updateState(opts);
+    const cellSizeChanged = opts.oldProps.cellSize !== opts.props.cellSize;
+
+    if (cellSizeChanged) {
+      const boundingBox = getBoundingBox(this.getAttributes(), this.getNumInstances());
+      const gridOffset = getGridOffset(boundingBox, opts.props.cellSize);
+      const worldOrigin = [-180, -90];
+      const {yMin, yMax, xMin, xMax} = boundingBox;
+      // const width = this.context.viewport.width;
+      // const height = this.context.viewport.height;
+      const width = xMax - xMin + gridOffset.xOffset;
+      const height = yMax - yMin +  gridOffset.yOffset;
+
+      const numCol = Math.ceil(width / gridOffset.xOffset);
+      const numRow = Math.ceil(height / gridOffset.yOffset);
+      const cellCount = numCol * numRow;
+      const dataBytes = cellCount * 4 * 4;
+
+      if (this.state.aggregationBuffer) {
+        this.state.aggregationBuffer.delete();
+      }
+      this.state.aggregationBuffer = new Buffer(this.context.gl, {
+        byteLength: dataBytes,
+        accessor: {
+          size: 4,
+          type: GL.FLOAT,
+          divisor: 1
+        }
+      });
+
+      // NOTE: this alignment will match grid cell boundaries with existing CPU implementation
+      // this gurantees identical aggregation results when switching between CPU and GPU aggregation.
+      // Also gurantees same cell boundaries, when overlapping between two different layers (like ScreenGrid and Contour)
+      // We first move worldOrigin to [0, 0], align the lower bounding box , then move worldOrigin to its original value.
+      const originX = alignToCell(xMin - worldOrigin[0],  gridOffset.xOffset) + worldOrigin[0];
+      const originY = alignToCell(yMin - worldOrigin[1],  gridOffset.yOffset) + worldOrigin[1];
+
+      // Setup transformation matrix so that every point is in +ve range
+      const gridTransformMatrix = new Matrix4().translate([-1 * originX, -1 * originY, 0]);
+
+      this.setState({gridTransformMatrix, width, height});
+    }
+
+    const {gridTransformMatrix, width, height} = this.state;
     this.state.cpuGridAggregator.updateState(Object.assign({},opts, {
       viewport: this.context.viewport,
       attributes: this.getAttributes(),
-      projectPoints: this.state.projectPoints
+      projectPoints: this.state.projectPoints,
+      gridTransformMatrix,
+      width,
+      height
     }));
   }
 

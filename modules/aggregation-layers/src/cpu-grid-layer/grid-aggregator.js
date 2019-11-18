@@ -19,6 +19,7 @@
 // THE SOFTWARE.
 
 import {createIterable} from '@deck.gl/core';
+import {worldToPixels} from '@math.gl/web-mercator';
 
 const R_EARTH = 6378000;
 
@@ -49,7 +50,7 @@ export function pointToDensityGridDataCPU(opts) {
  * @returns {object} - grid hash and cell dimension
  */
 /* eslint-disable max-statements, complexity */
-function _pointsToGridHashing({data = [], cellSize, attributes, viewport, projectPoints}) {
+function _pointsToGridHashing({data = [], cellSize, attributes, viewport, projectPoints, gridTransformMatrix}) {
   // find the geometric center of sample points
   let latMin = Infinity;
   let latMax = -Infinity;
@@ -65,7 +66,12 @@ function _pointsToGridHashing({data = [], cellSize, attributes, viewport, projec
     offsets = [0, 0]
     gridOffset = {xOffset: cellSize, yOffset: cellSize};
   } else {
-    offsets = [180, 90];
+    if (gridTransformMatrix) {
+      // convert Hexagon and GridLayer to use gridTransformMatrix
+      offsets = [0, 0]
+    } else {
+      offsets = [180, 90];
+    }
     /* eslint-disable-next-line no-unused-vars */
     for (const pt of iterable) {
       objectInfo.index++;
@@ -100,6 +106,8 @@ function _pointsToGridHashing({data = [], cellSize, attributes, viewport, projec
 
     if (projectPoints) {
       [lng, lat]= viewport.project([lng, lat]);
+    } else if (gridTransformMatrix) {
+      [lng, lat] = worldToPixels([lng, lat], gridTransformMatrix);
     }
 
     if (Number.isFinite(lat) && Number.isFinite(lng)) {

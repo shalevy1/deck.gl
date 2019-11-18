@@ -29,7 +29,7 @@ const ContourLayerExample = {
     id: 'contourLayer',
     cellSize: 200,
     getPosition: d => d.COORDINATES,
-    gpuAggregation: true,
+    gpuAggregation: false, // true,
     contours: [
       {threshold: 1, color: [255, 0, 0], strokeWidth: 4},
       {threshold: 5, color: [0, 255, 0], strokeWidth: 2},

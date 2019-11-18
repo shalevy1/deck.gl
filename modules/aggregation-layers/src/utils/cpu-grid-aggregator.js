@@ -63,6 +63,7 @@ export default class CPUGridAggregator extends CPUAggregator{
 
     const {gridHash, gridOffset, data} = this.state.layerData;
     const {sortedBins, minValue, maxValue, totalCount} = this.state.dimensions.fillColor.sortedBins;
+    // const {width, height} = this.state;
     if(this.state.aggregationDirty) {
       const {viewport} = opts;
       const width = opts.width || viewport.width;
@@ -76,6 +77,7 @@ export default class CPUGridAggregator extends CPUAggregator{
       for (const bin of sortedBins) {
         const {lonIdx, latIdx} = data[bin.i];
         const {value, counts} = bin;
+        // TODO this calculation need to be updated for ContourLaYER
         const cellIndex = (lonIdx + latIdx * numCol) * ELEMENTCOUNT;
         aggregationData[cellIndex] = value;
         aggregationData[cellIndex + ELEMENTCOUNT - 1] = counts;
@@ -89,9 +91,17 @@ export default class CPUGridAggregator extends CPUAggregator{
   run(opts) {
     console.log('In run method');
     const {aggregationData, maxData} = this.state;
-    const {aggregationBuffer, maxTexture} = opts.weights.color;
-    aggregationBuffer.setData({data: aggregationData});
-    maxTexture.setImageData({data: maxData});
+    if (opts.weights.color) {
+      const {aggregationBuffer, maxTexture} = opts.weights.color;
+      opts.weights.color.aggregationData = aggregationData;
+      aggregationBuffer.setData({data: aggregationData});
+      maxTexture.setImageData({data: maxData});
+    }
+    if (opts.weights.count) {
+      const {aggregationBuffer} = opts.weights.count;
+      opts.weights.count.aggregationData = aggregationData;
+      aggregationBuffer.setData({data: aggregationData});
+    }
   }
 
   updateGridSize(opts) {

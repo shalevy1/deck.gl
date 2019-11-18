@@ -19,12 +19,13 @@
 // THE SOFTWARE.
 
 import {equals} from 'math.gl';
+import {Buffer} from '@luma.gl/core';
 import {LineLayer, SolidPolygonLayer} from '@deck.gl/layers';
 import GL from '@luma.gl/constants';
 import {generateContours} from './contour-utils';
 
 import GPUGridAggregator from '../utils/gpu-grid-aggregation/gpu-grid-aggregator';
-import {pointToDensityGridData} from '../utils/gpu-grid-aggregation/grid-aggregation-utils';
+import {pointToDensityGridData, getBoundingBox, getGridOffset, alignToCell} from '../utils/gpu-grid-aggregation/grid-aggregation-utils';
 import GridAggregationLayer from '../grid-aggregation-layer';
 
 const DEFAULT_COLOR = [255, 255, 255, 255];
@@ -37,6 +38,7 @@ const defaultProps = {
   getPosition: {type: 'accessor', value: x => x.position},
   getWeight: {type: 'accessor', value: x => 1},
   gpuAggregation: true,
+  aggregation: 'SUM',
 
   // contour lines
   contours: [{threshold: DEFAULT_THRESHOLD}],
@@ -50,7 +52,7 @@ const AGGREGATION_PROPS = ['gpuAggregation'];
 
 export default class ContourLayer extends GridAggregationLayer {
   initializeState() {
-    super.initializeState(AGGREGATION_PROPS);
+    super.initializeState({aggregationProps: AGGREGATION_PROPS});
     this.setState({
       contourData: {},
       colorTrigger: 0,
@@ -109,14 +111,17 @@ export default class ContourLayer extends GridAggregationLayer {
       fp64,
       coordinateSystem
     } = this.props;
-    const {gpuGridAggregator} = this.state;
+    const {/*gpuGridAggregator, */ cpuGridAggregator} = this.state;
+
+    const {aggregationBuffer} = this.state;
+
 
     const {weights, gridSize, gridOrigin, cellSize, boundingBox} = pointToDensityGridData({
       data,
       cellSizeMeters,
-      weightParams: {count: {getWeight}},
+      weightParams: {count: {getWeight, aggregationBuffer}},
       gpuAggregation,
-      gpuGridAggregator,
+      gpuGridAggregator: cpuGridAggregator,
       fp64,
       coordinateSystem,
       viewport: this.context.viewport,
